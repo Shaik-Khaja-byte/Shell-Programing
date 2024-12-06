@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# File paths to store data
+MENU_FILE="menu.txt"             # Stores daily menu
+ATTENDANCE_FILE="attendance.txt" # Tracks attendance and meal counts
+FEEDBACK_FILE="feedback.txt"     # Stores feedback from students
+
+# Ensure required files exist
+touch $MENU_FILE $ATTENDANCE_FILE $FEEDBACK_FILE
+
+# Function: Display menu options
+display_menu() {
+    echo "============================="
+    echo "   College Mess Management   "
+    echo "============================="
+    echo "1. Manage Menu"
+    echo "2. Mark Attendance"
+    echo "3. Generate Bill"
+    echo "4. View Feedback"
+    echo "5. Submit Feedback"
+    echo "6. Exit"
+    echo "============================="
+}
+
+# Function: Manage daily menu
+manage_menu() {
+    echo "Enter today's menu (e.g., Breakfast: Idli, Lunch: Rice, Dinner: Chapati):"
+    read menu
+    echo "$(date +"%Y-%m-%d"): $menu" >> $MENU_FILE # Appends menu with date
+    echo "Menu updated successfully!"
+}
+
+# Function: Mark attendance for a student and meal type
+mark_attendance() {
+    echo "Enter student name:"
+    read name
+    echo "Enter meal type (e.g., Breakfast, Lunch, Dinner):"
+    read meal_type
+    today=$(date +"%Y-%m-%d") # Get today's date
+    record="$today: $name ($meal_type)"
+
+    # Check if an entry already exists
+    if grep -q "$record" $ATTENDANCE_FILE; then
+        # If it exists, increment the count
+        existing_line=$(grep "$record" $ATTENDANCE_FILE)
+        meal_count=$(echo "$existing_line" | grep -oE "x[0-9]+" | tr -d 'x') # Extract count
+        if [ -z "$meal_count" ]; then
+            meal_count=1 # Default count is 1
+        fi
+        new_count=$((meal_count + 1))
+        updated_line=$(echo "$existing_line" | sed "s/$meal_type/$meal_type x$new_count/")
+        sed -i "s|$existing_line|$updated_line|" $ATTENDANCE_FILE
+        echo "Attendance updated for $name for $meal_type (x$new_count)."
+    else
+        # If no entry exists, add a new one
+        echo "$record" >> $ATTENDANCE_FILE
+        echo "Attendance marked for $name for $meal_type."
+    fi
+}
+
+# Function: Generate a bill for a student
+generate_bill() {
+    echo "Enter student name:"
+    read name
+    total_count=0 # Total meal count
+    # Process each line in attendance file to calculate meals for the student
+    while IFS= read -r line; do
+        if echo "$line" | grep -q "$name"; then
+            meal_count=$(echo "$line" | grep -oE "x[0-9]+" | tr -d 'x') # Extract count
+            if [ -z "$meal_count" ]; then
+                meal_count=1 # Default count is 1 if not specified
+            fi
+            total_count=$((total_count + meal_count)) # Accumulate meal count
+        fi
+    done < $ATTENDANCE_FILE
+    bill_amount=$((total_count * 50))  # Assuming each meal costs ₹50
+    echo "Total meals taken by $name: $total_count"
+    echo "Total bill: ₹$bill_amount"
+}
+
+# Function: View all feedback submitted
+view_feedback() {
+    echo "========== Feedback =========="
+    cat $FEEDBACK_FILE # Display feedback content
+    echo "=============================="
+}
+
+# Function: Submit feedback
+submit_feedback() {
+    echo "Enter your feedback:"
+    read feedback
+    echo "$(date +"%Y-%m-%d"): $feedback" >> $FEEDBACK_FILE # Save feedback with date
+    echo "Thank you for your feedback!"
+}
+
+# Main loop for program navigation
+while true; do
+    display_menu
+    echo "Enter your choice:"
+    read choice
+    case $choice in
+        1) manage_menu ;;        # Update the daily menu
+        2) mark_attendance ;;    # Mark or update attendance
+        3) generate_bill ;;      # Generate a student's bill
+        4) view_feedback ;;      # View all feedback
+        5) submit_feedback ;;    # Submit feedback
+        6) echo "Exiting the system. Goodbye!"; exit ;; # Exit program
+        *) echo "Invalid choice. Please try again." ;;   # Handle invalid input
+    esac
+    echo
+done
