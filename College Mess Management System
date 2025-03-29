@@ -1,111 +1,141 @@
 #!/bin/bash
 
 # File paths to store data
-MENU_FILE="menu.txt"             # Stores daily menu
-ATTENDANCE_FILE="attendance.txt" # Tracks attendance and meal counts
-FEEDBACK_FILE="feedback.txt"     # Stores feedback from students
+ATTENDANCE_FILE="attendance.txt"
+FEEDBACK_FILE="feedback.txt"
+STUDENT_FILE="students.txt"
+CURRENT_MONTH_FILE="current_month.txt"
 
 # Ensure required files exist
-touch $MENU_FILE $ATTENDANCE_FILE $FEEDBACK_FILE
+touch $ATTENDANCE_FILE $FEEDBACK_FILE $CURRENT_MONTH_FILE
 
-# Function: Display menu options
-display_menu() {
-    echo "============================="
-    echo "   College Mess Management   "
-    echo "============================="
-    echo "1. Manage Menu"
-    echo "2. Mark Attendance"
-    echo "3. Generate Bill"
-    echo "4. View Feedback"
-    echo "5. Submit Feedback"
-    echo "6. Exit"
-    echo "============================="
-}
+# Initialize students and their quotas if the file doesn't exist
+if [ ! -f $STUDENT_FILE ]; then
+  echo "Aarav:90" > $STUDENT_FILE
+  echo "Vivaan:90" >> $STUDENT_FILE
+  echo "Aditya:90" >> $STUDENT_FILE
+  echo "Ishaan:90" >> $STUDENT_FILE
+  echo "Krishna:90" >> $STUDENT_FILE
+  echo "Rohan:90" >> $STUDENT_FILE
+  echo "Aryan:90" >> $STUDENT_FILE
+  echo "Karan:90" >> $STUDENT_FILE
+  echo "Yash:90" >> $STUDENT_FILE
+  echo "Dhruv:90" >> $STUDENT_FILE
+fi
 
-# Function: Manage daily menu
-manage_menu() {
-    echo "Enter today's menu (e.g., Breakfast: Idli, Lunch: Rice, Dinner: Chapati):"
-    read menu
-    echo "$(date +"%Y-%m-%d"): $menu" >> $MENU_FILE # Appends menu with date
-    echo "Menu updated successfully!"
-}
+# Initialize the current month if not set
+if [ ! -s $CURRENT_MONTH_FILE ]; then
+  echo $(date +"%Y-%m") > $CURRENT_MONTH_FILE
+fi
 
-# Function: Mark attendance for a student and meal type
-mark_attendance() {
+# Handle new month and transfer remaining quotas
+current_month=$(date +"%Y-%m")
+saved_month=$(cat $CURRENT_MONTH_FILE)
+
+if [ "$current_month" != "$saved_month" ]; then
+  echo "New month detected. Transferring remaining meal quota."
+  while IFS=: read -r student quota; do
+    new_quota=$((quota + 90))
+    sed -i "s/^$student:.*/$student:$new_quota/" $STUDENT_FILE
+  done < $STUDENT_FILE
+  echo $current_month > $CURRENT_MONTH_FILE
+fi
+
+# Main loop
+while true; do
+  echo "============================="
+  echo " College Mess Management System"
+  echo "============================="
+  echo "1. Mark Attendance"
+  echo "2. Generate Individual Bill"
+  echo "3. Generate Bill for All Students"
+  echo "4. View Feedback"
+  echo "5. Submit Feedback"
+  echo "6. Display Weekly Menu"
+  echo "7. Display All Students and Quotas"
+  echo "8. Exit"
+  echo "============================="
+
+  echo "Enter your choice:"
+  read choice
+
+  if [ "$choice" -eq 1 ]; then
     echo "Enter student name:"
     read name
-    echo "Enter meal type (e.g., Breakfast, Lunch, Dinner):"
-    read meal_type
-    today=$(date +"%Y-%m-%d") # Get today's date
-    record="$today: $name ($meal_type)"
+    if grep -q "^$name:" $STUDENT_FILE; then
+      echo "Enter meal type (Breakfast, Lunch, Dinner):"
+      read meal_type
+      today=$(date +"%Y-%m-%d")
+      echo "$today: $name ($meal_type)" >> $ATTENDANCE_FILE
+      echo "Attendance recorded for $name."
 
-    # Check if an entry already exists
-    if grep -q "$record" $ATTENDANCE_FILE; then
-        # If it exists, increment the count
-        existing_line=$(grep "$record" $ATTENDANCE_FILE)
-        meal_count=$(echo "$existing_line" | grep -oE "x[0-9]+" | tr -d 'x') # Extract count
-        if [ -z "$meal_count" ]; then
-            meal_count=1 # Default count is 1
-        fi
-        new_count=$((meal_count + 1))
-        updated_line=$(echo "$existing_line" | sed "s/$meal_type/$meal_type x$new_count/")
-        sed -i "s|$existing_line|$updated_line|" $ATTENDANCE_FILE
-        echo "Attendance updated for $name for $meal_type (x$new_count)."
+      current_quota=$(grep "^$name:" $STUDENT_FILE | cut -d':' -f2)
+      new_quota=$((current_quota - 1))
+      sed -i "s/^$name:.*/$name:$new_quota/" $STUDENT_FILE
     else
-        # If no entry exists, add a new one
-        echo "$record" >> $ATTENDANCE_FILE
-        echo "Attendance marked for $name for $meal_type."
+      echo "Invalid student name."
     fi
-}
 
-# Function: Generate a bill for a student
-generate_bill() {
+  elif [ "$choice" -eq 2 ]; then
     echo "Enter student name:"
     read name
-    total_count=0 # Total meal count
-    # Process each line in attendance file to calculate meals for the student
-    while IFS= read -r line; do
-        if echo "$line" | grep -q "$name"; then
-            meal_count=$(echo "$line" | grep -oE "x[0-9]+" | tr -d 'x') # Extract count
-            if [ -z "$meal_count" ]; then
-                meal_count=1 # Default count is 1 if not specified
-            fi
-            total_count=$((total_count + meal_count)) # Accumulate meal count
-        fi
-    done < $ATTENDANCE_FILE
-    bill_amount=$((total_count * 50))  # Assuming each meal costs ₹50
-    echo "Total meals taken by $name: $total_count"
-    echo "Total bill: ₹$bill_amount"
-}
+    if grep -q "^$name:" $STUDENT_FILE; then
+      total_meals=$(grep -c "$name" $ATTENDANCE_FILE)
+      MEAL_COST=50
+      bill_amount=$((total_meals * MEAL_COST))
+      remaining_quota=$(grep "^$name:" $STUDENT_FILE | cut -d':' -f2)
+      echo "Meals taken by $name: $total_meals"
+      echo "Billing amount: Rs$bill_amount"
+      echo "Remaining quota: $remaining_quota"
+    else
+      echo "Invalid student name."
+    fi
+  elif [ "$choice" -eq 3 ]; then
+    echo "Generating bills for all students:"
+    MEAL_COST=50
+    while IFS=: read -r student quota; do
+      total_meals=$(grep -c "$student" $ATTENDANCE_FILE)
+      bill_amount=$((total_meals * MEAL_COST))
+      echo "Student: $student"
+      echo "  Total meals: $total_meals"
+      echo "  Billing amount: Rs$bill_amount"
+      echo "  Remaining quota: $quota"
+      echo "-------------------------"
+    done < $STUDENT_FILE
 
-# Function: View all feedback submitted
-view_feedback() {
+  elif [ "$choice" -eq 4 ]; then
     echo "========== Feedback =========="
-    cat $FEEDBACK_FILE # Display feedback content
-    echo "=============================="
-}
+    cat $FEEDBACK_FILE
 
-# Function: Submit feedback
-submit_feedback() {
+  elif [ "$choice" -eq 5 ]; then
     echo "Enter your feedback:"
     read feedback
-    echo "$(date +"%Y-%m-%d"): $feedback" >> $FEEDBACK_FILE # Save feedback with date
-    echo "Thank you for your feedback!"
-}
+    echo "$(date +"%Y-%m-%d"): $feedback" >> $FEEDBACK_FILE
+    echo "Feedback submitted!"
 
-# Main loop for program navigation
-while true; do
-    display_menu
-    echo "Enter your choice:"
-    read choice
-    case $choice in
-        1) manage_menu ;;        # Update the daily menu
-        2) mark_attendance ;;    # Mark or update attendance
-        3) generate_bill ;;      # Generate a student's bill
-        4) view_feedback ;;      # View all feedback
-        5) submit_feedback ;;    # Submit feedback
-        6) echo "Exiting the system. Goodbye!"; exit ;; # Exit program
-        *) echo "Invalid choice. Please try again." ;;   # Handle invalid input
-    esac
-    echo
-done
+  elif [ "$choice" -eq 6 ]; then
+    echo "========== Weekly Menu =========="
+    echo "Monday    : Breakfast - Poha, Lunch - Veg Thali, Dinner - Chapati"
+    echo "Tuesday   : Breakfast - Upma, Lunch - Rice & Curry, Dinner - Dosa"
+    echo "Wednesday : Breakfast - Idli, Lunch - Veg Biryani, Dinner - Chapati"
+    echo "Thursday  : Breakfast - Pancakes, Lunch - Pasta, Dinner - Rice & Curry"
+    echo "Friday    : Breakfast - Sandwich, Lunch - Pizza, Dinner - Poha"
+    echo "Saturday  : Breakfast - Bread Butter, Lunch - Rice Thali, Dinner - Upma"
+    echo "Sunday    : Breakfast - Eggs, Lunch - Special Thali, Dinner - Pizza"
+    echo "================================"
+
+  elif [ "$choice" -eq 7 ]; then
+    echo "========== Student Quotas =========="
+    while IFS=: read -r student quota; do
+      echo "Student: $student - Remaining Quota: $quota meals"
+    done < $STUDENT_FILE
+    echo "===================================="
+
+  elif [ "$choice" -eq 8 ]; then
+    echo "Exiting. Goodbye!"
+    exit
+  else
+    echo "Invalid choice. Try again."
+  fi
+  echo
+done 
